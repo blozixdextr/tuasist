@@ -9,9 +9,31 @@ class Home extends CI_Controller {
         parent::__construct();
         $this->load->database();
 		$config['allowed_types'] = 'gif|jpg|jpeg|JPG|JPEG|png';
-        $this->load->library('upload', $config); 
+        $this->load->library('upload', $config);
+
+		$this->load->library('session');
+
+		$this->_load_language();
     }	
-	
+
+	function _load_language() {
+		$this->load->helper('language');
+
+		$language = $this->session->userdata('language');
+		if (!$language) {
+			$language = $this->config->item('language');
+		}
+
+		$language_files = array('general', 'signup');
+
+		foreach ($language_files as $l) {
+			$this->lang->load($l, $language);
+		}
+
+
+
+	}
+
 	/***DEFAULT NOR FOUND PAGE*****/
     function four_zero_four()
     {
@@ -58,37 +80,189 @@ class Home extends CI_Controller {
 		$page_data['page_name']  = 'page';
 		$this->load->view('static/index',$page_data);
 	}
-	
-	public function signup($param1 = '')
+
+	public function signup()
+	{
+        if ($this->session->userdata('user_login') == 1){
+            redirect(base_url() . 'home/dashboard', 'refresh');
+        }
+		$page_data['page_name']  = 'signup';
+		$page_data['page_title'] = $this->lang->line('signup_page_title');
+		$this->load->view('static/index', $page_data);
+	}
+
+	public function row_exist($id, $table_field) {
+		list($table, $field) = explode('.', $table_field);
+		if ($table_field == 'countries.country_id') {
+			$result = $this->db->query("SELECT * FROM `countries` WHERE `country_id` = ".$id." AND `country_status` = 1")->row();
+		} elseif ($table_field == 'states.state_id') {
+			$result = $this->db->query("SELECT * FROM `states` WHERE `state_id` = ".$id." AND `state_status` = 1")->row();
+		} elseif ($table_field == 'cities.city_id') {
+			$result = $this->db->query("SELECT * FROM `cities` WHERE `city_id` = ".$id." AND `city_status` = 1")->row();
+		} else {
+			$result = $this->db->query("SELECT * FROM `".$table."` WHERE `".$field."` = ".$id."")->row();
+		}
+		if (is_array($result) && count($result) == 0) {
+			$this->form_validation->set_message('row_check', 'Wrong row id');
+			return false;
+		} else {
+			return true;
+		}
+	}
+
+	public function cleanStr($str) {
+		return htmlentities(trim(strip_tags($str)));
+	}
+
+	public function signup_tasker($param1 = '')
+	{
+
+        if ($this->session->userdata('user_login') == 1){
+            redirect(base_url() . 'home/dashboard', 'refresh');
+        }
+		if ($param1 == 'create') {
+			$this->load->helper(array('form', 'url'));
+			$this->load->library('form_validation');
+			$user_type = intval($this->input->post('user_type'));
+			if (!in_array($user_type, array(0, 1))) {
+				$this->session->set_flashdata('flash_message', $this->lang->line('signup_error_select_type'));
+				redirect(base_url() . 'home/signup_tasker/', 'refresh');
+			}
+			if ($user_type == 1) {
+				$this->form_validation->set_rules('user_type', 'lang:signup_user_type_placeholder', 'required');
+				$this->form_validation->set_rules('first_name', 'lang:signup_first_name_placeholder', 'required');
+				$this->form_validation->set_rules('last_name', 'lang:signup_last_name_placeholder', 'required');
+			}
+			if ($user_type == 2) {
+				$this->form_validation->set_rules('company_name', 'lang:signup_user_type_placeholder', 'required');
+			}
+			$this->form_validation->set_rules('password', 'lang:signup_password_placeholder', 'required|min_length[6]');
+			$this->form_validation->set_rules('email', 'lang:signup_email_placeholder', 'required|is_unique[users.emailid]|valid_email');
+			$this->form_validation->set_rules('mobile', 'lang:signup_mobile_placeholder', 'required|numeric|is_unique[user_profiles.phone]');
+			$this->form_validation->set_rules('country', 'lang:signup_select_country', 'required|is_natural_no_zero|callback_row_exist[countries.country_id]');
+			$this->form_validation->set_rules('state', 'lang:signup_select_state', 'required|is_natural_no_zero|callback_row_exist[states.state_id]');
+			$this->form_validation->set_rules('city', 'lang:signup_select_city', 'required|is_natural_no_zero|callback_row_exist[cities.city_id]');
+
+			$this->form_validation->set_error_delimiters('<div class="error">', '</div>');
+			if ($this->form_validation->run()) {
+				$first_name = $this->cleanStr($this->input->post('first_name'));
+				$last_name = $this->cleanStr($this->input->post('last_name'));
+				$email = trim($this->input->post('email'));
+				$password = _base64_encrypt($this->input->post('password'), 'bytes789');
+				$country = intval($this->input->post('country'));
+				$state = intval($this->input->post('state'));
+				$city = intval($this->input->post('city'));
+				$mobile = $this->cleanStr($this->input->post('mobile'));
+				$data = array();
+				$data['full_name']       = $first_name.' '.$last_name;
+				$data['emailid']       = $email;
+				$data['password'] = $password;
+				$data['verify_email']       ='0';
+				$data['user_type']       = 1;
+				$data['signup_date']       = date('Y-m-d H:i:s');
+				$data['zipcode']       = '';
+				$data['active_status']       = '1';
+
+				$profile = array();
+				$profile['gender'] = '';
+				$profile['dob'] = '';
+				$profile['user_image'] = '';
+				$profile['address'] = '';
+				$profile['about_info'] = '';
+				$profile['location_map'] = '';
+				$profile['skills'] = '';
+				$profile['profile_links'] = '';
+				$profile['mobile'] = '';
+				$profile['phone'] = $mobile;
+				$profile['paypal_email'] = '';
+				$profile['first_name'] = $first_name;
+				$profile['last_name'] = $last_name;
+				$profile['profile_type'] = $user_type;
+				$profile['city'] = $city;
+
+
+				$this->db->trans_start();
+				$this->db->insert('users', $data);
+				$user_id = $this->db->insert_id();
+				$profile['user_id'] = $user_id;
+				$this->db->insert('user_profiles', $profile);
+				$this->db->trans_complete();
+				$this->email_model->Registration($data);
+				$this->session->set_flashdata('flash_message','<h3 style="color: green;text-align: center;">Successfully registered <br/>please check your emaidid</h3>');
+				$this->session->set_userdata('user_login', '1');
+				$this->session->set_userdata('user_id', $user_id);
+				$this->session->set_userdata('full_name', $data['full_name']);
+				$this->session->set_userdata('user_type', $data['user_type'] );
+				redirect(base_url() . 'home/tasker_profile_first/', 'refresh');
+			}
+		}
+		$page_data['page_name']  = 'signup_tasker';
+		$page_data['page_title'] = $this->lang->line('signup_tasker_page_title');
+		$page_data['countries'] = $this->db->query("SELECT * FROM `countries` WHERE `country_status` = 1 ORDER BY `country_name` ASC")->result_array();
+		$page_data['cities'] = $this->db->query("SELECT * FROM `cities` WHERE `city_status` = 1 ORDER BY `city_name` ASC")->result_array();
+		$page_data['states'] = $this->db->query("SELECT * FROM `states` WHERE `state_status` = 1 ORDER BY `state_name` ASC")->result_array();
+
+		$this->load->view('static/index',$page_data);
+	}
+
+	public function tasker_profile_first($param1 = '')
+	{
+		if ($this->session->userdata('user_login') != 1){
+			redirect(base_url() . 'home/login', 'refresh');
+		}
+        if ($param1 == 'create') {
+
+        }
+		$type = $this->session->userdata('user_type');
+		$userId = $this->session->userdata('user_id');
+        $user_type = $this->session->userdata('user_type');
+        if ($user_type != 1) {
+            redirect(base_url() . 'home/logout', 'refresh');
+            return;
+        }
+		$query = $this->db->get_where('user_profiles', array('user_id' => $userId));
+		if ($query->num_rows() > 0) {
+			$profile = $query->row();
+			$page_data['page_name']  = 'tasker_profile_first';
+			$page_data['page_title'] = $this->lang->line('signup_tasker_page_title');
+			$page_data['profile'] = $profile;
+			$this->load->view('static/index', $page_data);
+		} else {
+			redirect(base_url() . 'home/logout', 'refresh');
+			return;
+		}
+	}
+
+	public function signup_client($param1 = '')
 	{
 		if ($param1 == 'user_create') {
-        $data['full_name']       = $this->input->post('full_name');
-		$data['emailid']       = $this->input->post('email');
-		$data['password'] =_base64_encrypt($this->input->post('password'),'bytes789');
-		$data['verify_email']       ='0';
-		$data['user_type']       = '0';
-		$data['signup_date']       = date('Y-m-d H:i:s');
-		$data['zipcode']       = $this->input->post('zipcode');
-		$data['active_status']       = '1';
-		$page_data   = $this->db->get('users')->result_array();
-			foreach($page_data as $row){
-				if($data['emailid'] == $row['emailid'])
-				{
-				$this->session->set_flashdata('flash_message','User email id already Exist Try Again');
-				redirect(base_url() . 'home/signup/', 'refresh');
+			$data['full_name']       = $this->input->post('full_name');
+			$data['emailid']       = $this->input->post('email');
+			$data['password'] =_base64_encrypt($this->input->post('password'),'bytes789');
+			$data['verify_email']       ='0';
+			$data['user_type']       = '0';
+			$data['signup_date']       = date('Y-m-d H:i:s');
+			$data['zipcode']       = $this->input->post('zipcode');
+			$data['active_status']       = '1';
+			$page_data   = $this->db->get('users')->result_array();
+				foreach($page_data as $row){
+					if($data['emailid'] == $row['emailid'])
+					{
+					$this->session->set_flashdata('flash_message','User email id already Exist Try Again');
+					redirect(base_url() . 'home/signup/', 'refresh');
+					}
 				}
-			}
-		
-		$this->db->trans_start();
-		$this->db->insert('users', $data);
-		$user_id = $this->db->insert_id();
-		$this->db->query("INSERT INTO `user_profiles` (`profile_id`, `user_id`, `gender`, `dob`, `user_image`, `address`, `about_info`, `location_map`, `skills`, `profile_links`, `mobile`, `phone`, `paypal_email`)VALUES(NULL, '".$user_id."', '0', '', '', '', '', '', '', '', '', '', '') ");
-		$this->db->trans_complete();
-		$this->email_model->Registration($data);
-		$this->session->set_flashdata('flash_message','<h3 style="color: green;text-align: center;">Successfully registered <br/>please check your emaidid</h3>');
-		redirect(base_url() . 'home/login/', 'refresh');
+
+			$this->db->trans_start();
+			$this->db->insert('users', $data);
+			$user_id = $this->db->insert_id();
+			$this->db->query("INSERT INTO `user_profiles` (`profile_id`, `user_id`, `gender`, `dob`, `user_image`, `address`, `about_info`, `location_map`, `skills`, `profile_links`, `mobile`, `phone`, `paypal_email`)VALUES(NULL, '".$user_id."', '0', '', '', '', '', '', '', '', '', '', '') ");
+			$this->db->trans_complete();
+			$this->email_model->Registration($data);
+			$this->session->set_flashdata('flash_message','<h3 style="color: green;text-align: center;">Successfully registered <br/>please check your emaidid</h3>');
+			redirect(base_url() . 'home/login/', 'refresh');
 		}
-		$page_data['page_name']  = 'signup';
+		$page_data['page_name']  = 'signup_client';
 		$page_data['page_title'] = 'Signup';
         $this->load->view('static/index',$page_data);
 	}
@@ -118,7 +292,7 @@ class Home extends CI_Controller {
             if ($query->num_rows() > 0) {
                 $row = $query->row();
                 if (!empty($row)) {
-					if($row->active_status==1){
+					if($row->active_status == 1){
                     $this->session->set_userdata('user_login', '1');
                     $this->session->set_userdata('user_id', $row->user_id);
                     $this->session->set_userdata('full_name', $row->full_name);
